@@ -21,7 +21,7 @@ Watch it grow from a little bud into a blooming red rose. ୨୧
 
 ♡・The rose deserves to be seen in motion.
 
-**[Click here to watch the rose bloom]([(https://cznm.github.io/code-flower/))**
+[**[Click here to watch the rose bloom]([(https://cznm.github.io/code-flower/))**](https://cznm.github.io/code-flower/)
 
 ## ୨୧・Features
 
