@@ -1,0 +1,541 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rose.exe — Code in Bloom</title>
+
+<style>
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: #030204;
+  min-height: 100vh;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  font-family: monospace;
+}
+
+header {
+  position: absolute;
+  top: 25px;
+  text-align: center;
+  z-index: 2;
+}
+
+h1 {
+  color: #e94b70;
+  font-size: 13px;
+  font-weight: normal;
+  letter-spacing: 7px;
+}
+
+p {
+  color: #75505e;
+  font-size: 9px;
+  letter-spacing: 4px;
+}
+
+canvas {
+  width: min(96vw, 950px);
+  height: min(85vh, 760px);
+}
+
+button {
+  position: absolute;
+  bottom: 22px;
+  background: transparent;
+  color: #e987a2;
+  border: 1px solid #68243e;
+  border-radius: 25px;
+  padding: 10px 22px;
+  font: 11px monospace;
+  letter-spacing: 2px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #29101b;
+}
+</style>
+</head>
+
+<body>
+
+<header>
+  <h1>ROSE.EXE</h1>
+  <p>EVERY CHARACTER IS A PETAL</p>
+</header>
+
+<canvas id="art"></canvas>
+
+<button id="restart">↻ RESTART BLOOM</button>
+
+<script>
+const canvas = document.getElementById("art");
+const ctx = canvas.getContext("2d");
+
+let W, H, startTime = performance.now();
+
+function resize() {
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+
+  W = canvas.clientWidth;
+  H = canvas.clientHeight;
+
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+resize();
+window.addEventListener("resize", resize);
+
+// Actual code characters used to construct the rose.
+const alphabet =
+  "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" +
+  "{}[]();<>/=+-_*&%#$@!?";
+
+const red = [
+  "#65091e",
+  "#8e102c",
+  "#bd153d",
+  "#e21e4c",
+  "#ff315d",
+  "#ff547a",
+  "#ff7895",
+  "#ffabc0"
+];
+
+const green = [
+  "#064c2b",
+  "#087b40",
+  "#0ca957",
+  "#18d16c",
+  "#48ed91",
+  "#8bffb3"
+];
+
+const pink = [
+  "#8e1746",
+  "#b72b5b",
+  "#df467a",
+  "#f76b99",
+  "#ff9fba",
+  "#ffd0df"
+];
+
+function random(seed) {
+  const n = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
+  return n - Math.floor(n);
+}
+
+function ease(t) {
+  t = Math.max(0, Math.min(1, t));
+  return t * t * (3 - 2 * t);
+}
+
+function stage(t, a, b) {
+  return ease((t - a) / (b - a));
+}
+
+// All visible flower surfaces are rendered as characters.
+// Paths below are invisible clipping guides only.
+function characterTexture(path, bounds, palette, seed, density, time) {
+  ctx.save();
+  ctx.clip(path);
+
+  const stepX = density;
+  const stepY = density * 1.18;
+
+  const cols = Math.ceil((bounds.right - bounds.left) / stepX);
+  const rows = Math.ceil((bounds.bottom - bounds.top) / stepY);
+
+  ctx.font = "5.8px monospace";
+  ctx.textBaseline = "middle";
+
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+
+      const x = bounds.left + col * stepX;
+      const y = bounds.top + row * stepY;
+
+      const id = row * cols + col + seed * 1000;
+      const r = random(id);
+
+      // Very dense character coverage.
+      if (r < 0.035) continue;
+
+      const char = alphabet[
+        Math.floor(random(id + 19) * alphabet.length)
+      ];
+
+      const shade = Math.floor(
+        random(id + 37) * palette.length
+      );
+
+      ctx.globalAlpha =
+        0.65 + random(id + 51) * 0.35;
+
+      ctx.fillStyle = palette[shade];
+
+      // Subtle shimmer without moving the flower's structure.
+      const shimmer =
+        Math.sin(time * 1.5 + id * 0.04) * 0.18;
+
+      ctx.globalAlpha = Math.max(
+        0.45,
+        Math.min(1, ctx.globalAlpha + shimmer)
+      );
+
+      ctx.fillText(char, x, y);
+    }
+  }
+
+  ctx.restore();
+}
+
+// Build one curved rose petal from a mathematical path.
+function makePetal(length, width) {
+  const path = new Path2D();
+
+  path.moveTo(0, 0);
+
+  path.bezierCurveTo(
+    -width * 0.9, -length * 0.18,
+    -width * 1.05, -length * 0.72,
+    0, -length
+  );
+
+  path.bezierCurveTo(
+    width * 1.05, -length * 0.72,
+    width * 0.9, -length * 0.18,
+    0, 0
+  );
+
+  path.closePath();
+  return path;
+}
+
+function drawPetal(cx, cy, angle, length, width,
+                   amount, palette, seed, time) {
+
+  if (amount < 0.01) return;
+
+  ctx.save();
+
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
+
+  // Each petal unfolds from the centre.
+  ctx.scale(amount, amount);
+
+  const path = makePetal(length, width);
+
+  characterTexture(
+    path,
+    {
+      left: -width,
+      right: width,
+      top: -length,
+      bottom: 0
+    },
+    palette,
+    seed,
+    4.1,
+    time
+  );
+
+  ctx.restore();
+}
+
+// The flower centre uses a curled spiral of characters.
+function drawCentre(cx, cy, amount, time) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(amount, amount);
+
+  const path = new Path2D();
+
+  path.arc(0, 0, 31, 0, Math.PI * 2);
+
+  characterTexture(
+    path,
+    {left:-32, right:32, top:-32, bottom:32},
+    pink,
+    99,
+    3.8,
+    time
+  );
+
+  // A second, tighter spiral layer.
+  const spiral = new Path2D();
+
+  spiral.arc(0, 0, 16, 0, Math.PI * 2);
+
+  characterTexture(
+    spiral,
+    {left:-17, right:17, top:-17, bottom:17},
+    red,
+    100,
+    3.5,
+    time
+  );
+
+  ctx.restore();
+}
+
+// Character-built leaves.
+function drawLeaf(x, y, angle, amount, seed, time) {
+  if (amount <= 0) return;
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.scale(amount, amount);
+
+  const path = new Path2D();
+
+  path.moveTo(0, 0);
+  path.bezierCurveTo(35, -43, 105, -52, 112, -8);
+  path.bezierCurveTo(95, 35, 35, 30, 0, 0);
+  path.closePath();
+
+  characterTexture(
+    path,
+    {left:0, right:113, top:-53, bottom:36},
+    green,
+    seed,
+    4.1,
+    time
+  );
+
+  ctx.restore();
+}
+
+// Character-built curved stem.
+function drawStem(cx, base, height, amount, time) {
+  if (amount <= 0) return;
+
+  ctx.save();
+
+  const path = new Path2D();
+
+  path.moveTo(cx - 5, base);
+  path.bezierCurveTo(
+    cx + 24, base - height * 0.35,
+    cx - 22, base - height * 0.7,
+    cx + 2, base - height
+  );
+
+  path.bezierCurveTo(
+    cx + 12, base - height * 0.7,
+    cx + 5, base - height * 0.3,
+    cx + 5, base
+  );
+
+  path.closePath();
+
+  characterTexture(
+    path,
+    {
+      left: cx - 25,
+      right: cx + 30,
+      top: base - height,
+      bottom: base
+    },
+    green,
+    200,
+    3.9,
+    time
+  );
+
+  ctx.restore();
+}
+
+// Entire animation.
+function draw(time) {
+  ctx.clearRect(0, 0, W, H);
+
+  const cx = W / 2;
+  const base = H * 0.91;
+  const flowerY = H * 0.34;
+
+  // Background atmosphere.
+  const glow = ctx.createRadialGradient(
+    cx, flowerY, 10,
+    cx, flowerY, H * 0.48
+  );
+
+  glow.addColorStop(0, "rgba(105, 8, 37, 0.15)");
+  glow.addColorStop(1, "rgba(3, 2, 4, 0)");
+
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
+
+  // Timeline.
+  const stemProgress = stage(time, 0.5, 4.5);
+  const leavesProgress = stage(time, 3, 6);
+  const budProgress = stage(time, 4, 6);
+  const opening = stage(time, 6, 11);
+
+  // Natural movement after blooming.
+  const movement = time > 11
+    ? Math.sin(time * 0.9) * 0.025
+    : 0;
+
+  const stemHeight = H * 0.48 * stemProgress;
+
+  drawStem(cx, base, stemHeight, stemProgress, time);
+
+  const sway = Math.sin(time * 0.8) * 3;
+
+  // Leaves unfold.
+  drawLeaf(
+    cx - 3,
+    base - stemHeight * 0.37,
+    -2.65,
+    leavesProgress,
+    201,
+    time
+  );
+
+  drawLeaf(
+    cx + 4,
+    base - stemHeight * 0.65,
+    -0.45,
+    leavesProgress,
+    202,
+    time
+  );
+
+  // Small upper leaf.
+  drawLeaf(
+    cx,
+    base - stemHeight * 0.82,
+    -2.8,
+    stage(time, 4, 7) * 0.72,
+    203,
+    time
+  );
+
+  if (budProgress > 0) {
+
+    const fx = cx + sway;
+    const fy = base - stemHeight - 10;
+
+    // Closed bud before the rose opens.
+    if (opening < 0.3) {
+      const bud = stage(time, 4, 6);
+
+      drawPetal(
+        fx, fy, 0,
+        60, 29,
+        bud * (1 - opening),
+        red, 30, time
+      );
+    }
+
+    // Outer petals, each unfolding separately.
+    for (let i = 0; i < 9; i++) {
+      const angle = i * Math.PI * 2 / 9
+        + movement;
+
+      const individualOpen = stage(
+        time,
+        6 + (i % 3) * 0.35,
+        10 + (i % 3) * 0.35
+      );
+
+      const flutter = time > 11
+        ? Math.sin(time * 1.5 + i) * 0.035
+        : 0;
+
+      drawPetal(
+        fx,
+        fy,
+        angle + flutter,
+        105 + (i % 3) * 9,
+        43 + (i % 2) * 8,
+        individualOpen,
+        red,
+        10 + i,
+        time
+      );
+    }
+
+    // Middle petals.
+    for (let i = 0; i < 7; i++) {
+      const angle = i * Math.PI * 2 / 7
+        + 0.3 + movement;
+
+      const individualOpen = stage(
+        time,
+        7 + (i % 2) * 0.3,
+        10.5 + (i % 2) * 0.3
+      );
+
+      drawPetal(
+        fx,
+        fy,
+        angle,
+        77,
+        35,
+        individualOpen,
+        pink,
+        50 + i,
+        time
+      );
+    }
+
+    // Inner petals.
+    for (let i = 0; i < 5; i++) {
+      const angle = i * Math.PI * 2 / 5;
+
+      drawPetal(
+        fx,
+        fy,
+        angle,
+        48,
+        24,
+        stage(time, 7.8, 10.8),
+        red,
+        70 + i,
+        time
+      );
+    }
+
+    drawCentre(
+      fx,
+      fy,
+      stage(time, 8, 11),
+      time
+    );
+  }
+
+  ctx.globalAlpha = 1;
+}
+
+function animate(now) {
+  const time = (now - startTime) / 1000;
+
+  draw(time);
+
+  requestAnimationFrame(animate);
+}
+
+requestAnimationFrame(animate);
+
+document.getElementById("restart").onclick = () => {
+  startTime = performance.now();
+};
+</script>
+
+</body>
+</html>
